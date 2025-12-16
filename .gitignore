@@ -7,12 +7,14 @@ __pycache__/
 .venv/
 venv/
 ENV/
+uv.lock
 
 # IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
+nvidia_stock_analysis.code-workspace
 
 # Data
 data/*.csv
