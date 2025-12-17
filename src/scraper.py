@@ -68,6 +68,86 @@ class NewsScraper:
             print(f"❌ Fehler beim Scraping: {e}")
             return pd.DataFrame()
 
+    def get_stocktwits_feed(self, symbol="NVDA"):
+        """
+        Holt echte Trader-Kommentare von Stocktwits (Twitter-Alternative für Finanzen).
+        Dies ist die beste Quelle für kurzfristige 'Insider'-Stimmung.
+        """
+        print(f"🐦 Hole Stocktwits für {symbol}...")
+        url = f"https://api.stocktwits.com/api/2/streams/symbol/{symbol}.json"
+        
+        try:
+            r = requests.get(url, headers=self.headers)
+            data = r.json()
+            
+            messages = []
+            for msg in data['messages']:
+                # Wir filtern Spam raus
+                body = msg['body']
+                user = msg['user']['username']
+                time_str = msg['created_at'] # Format: 2024-12-16T15:30:00Z
+                
+                # Sentiment Labels (Bullish/Bearish) wenn vorhanden
+                sentiment_label = msg['entities']['sentiment']['basic'] if msg['entities']['sentiment'] else "Neutral"
+                
+                messages.append({
+                    "Date": datetime.strptime(time_str, "%Y-%m-%dT%H:%M:%SZ"),
+                    "Title": f"@{user}: {body}", # Wir nutzen 'Title' damit der SentimentAnalyzer es versteht
+                    "Source": "Stocktwits",
+                    "Type": "Social",
+                    "Label": sentiment_label # Zusatzinfo für uns
+                })
+            
+            return pd.DataFrame(messages)
+        except Exception as e:
+            print(f"❌ Fehler Stocktwits: {e}")
+            return pd.DataFrame()
+
+    def get_reddit_posts(self, subreddit="nvidia", limit=15):
+        """Holt die neuesten Diskussionen von Reddit (JSON Trick)."""
+        print(f"👽 Crawle r/{subreddit}...")
+        url = f"https://www.reddit.com/r/{subreddit}/new.json?limit={limit}"
+        
+        try:
+            r = requests.get(url, headers=self.headers)
+            data = r.json()
+            
+            posts = []
+            for child in data['data']['children']:
+                post = child['data']
+                title = post['title']
+                text = post['selftext'][:200] # Nur die ersten 200 Zeichen
+                full_text = f"{title} - {text}"
+                
+                # Unix Timestamp umwandeln
+                dt = datetime.fromtimestamp(post['created_utc'])
+                
+                posts.append({
+                    "Date": dt,
+                    "Title": full_text,
+                    "Source": f"Reddit r/{subreddit}",
+                    "Type": "Social"
+                })
+            return pd.DataFrame(posts)
+        except Exception as e:
+            print(f"❌ Fehler Reddit: {e}")
+            return pd.DataFrame()
+
+    def get_all_sources(self, ticker="NVDA"):
+        """Aggregiert ALLES: News + Stocktwits + Reddit"""
+        df_news = self.get_nvidia_news(f"{ticker} stock")
+        df_st = self.get_stocktwits_feed(ticker)
+        df_reddit = self.get_reddit_posts("wallstreetbets", limit=10) # WSB ist wichtig für Hypes
+        
+        # Alle DataFrames zusammenkleben
+        full_df = pd.concat([df_news, df_st, df_reddit], ignore_index=True)
+        
+        # Nach Datum sortieren (neueste zuerst)
+        if not full_df.empty:
+            full_df = full_df.sort_values(by="Date", ascending=False)
+            
+        return full_df
+
     def get_earnings_calendar(self, ticker_symbol="NVDA"):
         """
         Holt geplante Events (Earnings Calls) via yfinance.

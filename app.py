@@ -33,9 +33,9 @@ def get_data(ticker, period):
 @st.cache_data
 def get_news_and_sentiment(ticker):
     scraper = NewsScraper()
-    news_df = scraper.get_nvidia_news(query=f"{ticker} stock news", max_items=10)
+    mixed_df = scraper.get_all_sources(ticker)
     analyzer = SentimentAnalyzer()
-    return analyzer.analyze_news(news_df)
+    return analyzer.analyze_news(mixed_df)
 
 @st.cache_resource
 def train_model(df):
@@ -60,7 +60,7 @@ col3.metric("ATR (Volatilität)", f"${latest['ATR']:.2f}", "Schwankungsbreite")
 col4.metric("MACD Signal", "KAUFEN" if latest['MACD'] > latest['MACD_Signal'] else "VERKAUFEN", delta_color="normal")
 
 # --- Tabs für bessere Übersicht ---
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Chart & Trend", "📉 Momentum & MACD", "🌊 Volumen (OBV)", "🧠 KI Prognose"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📊 Chart", "📉 Momentum", "🌊 Volumen", "🧠 KI Prognose", "☁️ NLP", "🔬 Math & Cycles"]) 
 
 # TAB 1: Hauptchart
 with tab1:
@@ -75,7 +75,7 @@ with tab1:
     fig.add_trace(go.Scatter(x=df.index, y=df['SMA_50'], line=dict(color='orange', width=2), name='SMA 50'))
     
     fig.update_layout(height=600, xaxis_rangeslider_visible=False)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
     
     with st.expander("ℹ️ Erklärung: Was sehen wir hier?"):
         st.markdown("""
@@ -100,7 +100,7 @@ with tab2:
     fig_macd.add_trace(go.Bar(x=df.index, y=df['MACD_Hist'], marker_color=colors, name='Histogramm'), row=2, col=1)
     
     fig_macd.update_layout(height=500)
-    st.plotly_chart(fig_macd, use_container_width=True)
+    st.plotly_chart(fig_macd, width='stretch')
     
     st.info("""
     **MACD Erklärung:**
@@ -117,7 +117,7 @@ with tab3:
     fig_obv.add_trace(go.Scatter(x=df.index, y=df['Close'], name='Preis'), row=1, col=1)
     fig_obv.add_trace(go.Scatter(x=df.index, y=df['OBV'], line=dict(color='purple'), name='OBV'), row=2, col=1)
     
-    st.plotly_chart(fig_obv, use_container_width=True)
+    st.plotly_chart(fig_obv, width='stretch')
     
     st.markdown("""
     ### 🕵️ Was verrät das Volumen?
@@ -165,3 +165,150 @@ with tab4:
     if not news_df.empty:
         st.subheader("Letzte Schlagzeilen")
         st.dataframe(news_df[['Date', 'Title', 'Sentiment_Score']], hide_index=True)
+
+with tab5:
+    st.subheader("📢 Social Sentiment & Insider Talk")
+    st.markdown("Was denken die Privatanleger auf **Stocktwits** und **Reddit** im Vergleich zu den Medien?")
+    
+    if not news_df.empty:
+        # Daten aufteilen
+        social_df = news_df[news_df['Type'] == 'Social']
+        mainstream_df = news_df[news_df['Type'] == 'News']
+        
+        # --- Metrics Row ---
+        col_s1, col_s2, col_s3 = st.columns(3)
+        
+        social_sent = social_df['Sentiment_Score'].mean() if not social_df.empty else 0
+        news_sent = mainstream_df['Sentiment_Score'].mean() if not mainstream_df.empty else 0
+        
+        col_s1.metric("Stimmung: Social Media", f"{social_sent:.2f}", 
+                      "Bullish" if social_sent > 0.05 else "Bearish", 
+                      delta_color="normal")
+        col_s2.metric("Stimmung: Nachrichten", f"{news_sent:.2f}",
+                      "Positiv" if news_sent > 0.05 else "Negativ")
+        col_s3.metric("Anzahl Posts (24h)", len(news_df))
+
+        st.markdown("---")
+
+        # --- Layout: Links Feed, Rechts Analyse ---
+        col_feed, col_viz = st.columns([0.4, 0.6])
+        
+        with col_feed:
+            st.markdown("### 🔥 Live Feed (Stocktwits & Reddit)")
+            # Eigener kleiner Feed-Reader
+            for index, row in social_df.head(10).iterrows():
+                with st.container():
+                    # Icon je nach Quelle
+                    icon = "🐦" if "Stocktwits" in row['Source'] else "👽"
+                    
+                    # Sentiment Farbe
+                    color = "green" if row['Sentiment_Score'] > 0.2 else "red" if row['Sentiment_Score'] < -0.2 else "gray"
+                    
+                    st.markdown(f"**{icon} {row['Source']}** <span style='color:{color}'>({row['Sentiment_Score']:.2f})</span>", unsafe_allow_html=True)
+                    st.caption(f"{row['Date'].strftime('%H:%M')} | {row['Title']}")
+                    st.divider()
+
+        with col_viz:
+            st.markdown("### ☁️ Worüber reden die Trader?")
+            # Wordcloud nur aus Social Media Daten
+            from wordcloud import WordCloud
+            import matplotlib.pyplot as plt
+            
+            text = " ".join(social_df['Title'])
+            if len(text) > 0:
+                # Eigene Farben für Wordcloud (Orange/Weiß für Reddit/Social Style)
+                wordcloud = WordCloud(width=800, height=500, background_color='#0e1117', colormap='Wistia').generate(text)
+                fig_wc, ax = plt.subplots(figsize=(10, 6))
+                ax.imshow(wordcloud, interpolation='bilinear')
+                ax.axis('off')
+                # Hintergrund transparent machen für Dark Mode
+                fig_wc.patch.set_facecolor('#0e1117')
+                st.pyplot(fig_wc)
+            else:
+                st.info("Nicht genug Social Daten für eine Wolke.")
+
+            st.markdown("### ⚖️ Stimmung vs. Subjektivität (Alle Quellen)")
+            # Scatter Plot Code von vorhin (bleibt gleich, ist aber jetzt spannender)
+            fig_scatter = go.Figure()
+            # Social in Blau, News in Orange
+            colors = news_df['Type'].map({'Social': 'cyan', 'News': 'orange'})
+            
+            fig_scatter.add_trace(go.Scatter(
+                x=news_df['Sentiment_Score'],
+                y=news_df['Subjectivity'],
+                mode='markers',
+                text=news_df['Title'],
+                marker=dict(size=10, color=colors)
+            ))
+            fig_scatter.update_layout(
+                xaxis_title="Sentiment", yaxis_title="Subjektivität", height=350,
+                margin=dict(l=0, r=0, t=30, b=0)
+            )
+            st.plotly_chart(fig_scatter, width='stretch')
+            st.caption("🔵 = Social Media (Meinung) | 🟠 = News (Redaktionell)")
+
+    else:
+        st.warning("Keine Daten gefunden. API Limit oder Internet-Problem?")
+
+with tab6:
+    st.subheader("Mathematische Zeitreihen-Analyse")
+    st.markdown("Identifikation von versteckten Mustern und Zyklen, die dem bloßen Auge verborgen bleiben.")
+
+    # Berechnungen durchführen
+    with st.spinner('Berechne Fourier-Transformation & Zerlegung...'):
+        # Für Decomposition brauchen wir genug Daten (mind. 2 Jahre empfohlen für period=252)
+        decomposition = None
+        if len(df) > 300:
+            from src.indicators import calculate_seasonal_decomposition, calculate_fourier_transform
+            decomposition = calculate_seasonal_decomposition(df, period=60) # Quartals-Saison (ca. 60 Handelstage)
+            fourier_df = calculate_fourier_transform(df)
+        else:
+            st.warning("Für diese Analyse werden mindestens 2 Jahre Daten benötigt. Bitte Zeitraum in der Sidebar erhöhen.")
+
+    if decomposition:
+        # 1. Seasonal Decomposition Plot
+        st.markdown("### 🧩 Time Series Decomposition (Trend vs. Saison)")
+        st.caption("Zerlegt den Kurs in drei Komponenten: Den langfristigen Trend, das wiederkehrende Muster (Saison) und das Rauschen (Noise).")
+        
+        fig_decomp = make_subplots(rows=3, cols=1, shared_xaxes=True, 
+                                   subplot_titles=("Langfristiger Trend", "Wiederkehrendes Muster (Saisonalität)", "Rauschen (Residuals)"),
+                                   vertical_spacing=0.1)
+        
+        # Trend
+        fig_decomp.add_trace(go.Scatter(x=df.index, y=decomposition['trend'], line=dict(color='blue'), name='Trend'), row=1, col=1)
+        # Seasonal
+        fig_decomp.add_trace(go.Scatter(x=df.index, y=decomposition['seasonal'], line=dict(color='green'), name='Saisonalität'), row=2, col=1)
+        # Residuals
+        fig_decomp.add_trace(go.Scatter(x=df.index, y=decomposition['resid'], mode='markers', marker=dict(color='gray', size=2), name='Residuals'), row=3, col=1)
+        
+        fig_decomp.update_layout(height=700, showlegend=False)
+        st.plotly_chart(fig_decomp, width='stretch')
+        
+        st.markdown("---")
+
+        # 2. Fourier Transform Plot
+        st.markdown("### 🌊 Fourier Analyse: Dominante Zyklen")
+        st.caption("Die Fast Fourier Transform (FFT) zeigt, welche Zyklen (in Tagen) den stärksten Einfluss auf den Kurs haben.")
+        
+        # Wir filtern Rauschen raus und zeigen nur Zyklen zwischen 10 und 365 Tagen
+        fourier_filtered = fourier_df[(fourier_df['Cycle_Length_Days'] > 20) & (fourier_df['Cycle_Length_Days'] < 365)].head(20)
+        
+        fig_fft = go.Figure()
+        fig_fft.add_trace(go.Bar(
+            x=fourier_filtered['Cycle_Length_Days'],
+            y=fourier_filtered['Amplitude'],
+            marker_color='purple'
+        ))
+        
+        fig_fft.update_layout(
+            xaxis_title="Zyklus-Länge (Tage)",
+            yaxis_title="Stärke (Amplitude)",
+            xaxis_type="log", # Logarithmisch ist oft besser bei Frequenzen
+            height=400,
+            hovermode="x"
+        )
+        st.plotly_chart(fig_fft, width='stretch')
+        
+        # Top Zyklen Text
+        top_cycle = fourier_filtered.iloc[0]['Cycle_Length_Days']
+        st.info(f"💡 **Insight:** Der stärkste erkannte Zyklus wiederholt sich etwa alle **{top_cycle:.1f} Tage**. Achte auf Muster in diesem Abstand!")

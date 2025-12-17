@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+from statsmodels.tsa.seasonal import seasonal_decompose
+import scipy.fftpack
 
 def calculate_rsi(data, window=14):
     """Berechnet den RSI (Relative Strength Index)."""
@@ -59,3 +61,53 @@ def add_indicators(df):
     # Bereinigen
     df.dropna(inplace=True)
     return df
+
+def calculate_seasonal_decomposition(df, period=252):
+    """
+    Zerlegt den Chart in Trend, Saisonalität und Rauschen (Residuals).
+    period=252 entspricht etwa einem Handelsjahr (Business Days).
+    """
+    if df is None or len(df) < period * 2:
+        return None
+
+    # Wir müssen sicherstellen, dass keine NaNs da sind
+    clean_data = df['Close'].dropna()
+    
+    # Additive Zerlegung
+    result = seasonal_decompose(clean_data, model='additive', period=period)
+    
+    return {
+        'trend': result.trend,
+        'seasonal': result.seasonal,
+        'resid': result.resid
+    }
+
+def calculate_fourier_transform(df):
+    """
+    Identifiziert zyklische Muster mittels Fast Fourier Transform (FFT).
+    Gibt die Zyklenlänge (in Tagen) und deren Stärke (Amplitude) zurück.
+    """
+    # Detrending: Wir ziehen den Durchschnitt ab, um nur die Schwingungen zu sehen
+    close_prices = df['Close'].values
+    n = len(close_prices)
+    detrended = close_prices - np.mean(close_prices)
+    
+    # FFT Berechnung
+    fft_values = scipy.fftpack.fft(detrended)
+    frequencies = scipy.fftpack.fftfreq(n)
+    
+    # Wir brauchen nur die positive Hälfte (Symmetrie)
+    mask = frequencies > 0
+    fft_values = fft_values[mask]
+    frequencies = frequencies[mask]
+    
+    # Amplitude berechnen
+    amplitude = np.abs(fft_values)
+    
+    # Frequenz in "Tage pro Zyklus" umwandeln (1 / Frequenz)
+    cycles_days = 1 / frequencies
+    
+    return pd.DataFrame({
+        'Cycle_Length_Days': cycles_days,
+        'Amplitude': amplitude
+    }).sort_values(by='Amplitude', ascending=False)
