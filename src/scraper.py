@@ -32,7 +32,7 @@ class NewsScraper:
             "Connection": "keep-alive",
         }
 
-    def get_nvidia_news(self, query="NVIDIA stock", max_items=20):
+    def get_nvidia_news(self, query="NVIDIA stock", max_items=200):
         """Google News RSS"""
         print(f"🕷️ Crawle Google News: '{query}'...")
         url = f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
@@ -154,8 +154,8 @@ class NewsScraper:
         df_st = self.get_stocktwits_feed(ticker)
 
         # Reddit holen (WallStreetBets & Nvidia Subreddit)
-        df_reddit_wsb = self.get_reddit_posts("wallstreetbets", limit=15)
-        df_reddit_nvda = self.get_reddit_posts("nvidia", limit=10)
+        df_reddit_wsb = self.get_reddit_posts("wallstreetbets", limit=200)
+        df_reddit_nvda = self.get_reddit_posts("nvidia", limit=200)
 
         dfs = [
             d for d in [df_news, df_st, df_reddit_wsb, df_reddit_nvda] if not d.empty
