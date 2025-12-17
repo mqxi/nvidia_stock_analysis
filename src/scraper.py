@@ -48,7 +48,7 @@ class NewsScraper:
                     pub_date = datetime.strptime(
                         item.pubDate.text, "%a, %d %b %Y %H:%M:%S %Z"
                     )
-                except:
+                except ValueError:
                     pub_date = datetime.now()
 
                 news_list.append(
@@ -112,7 +112,7 @@ class NewsScraper:
             print(f"❌ Fehler Stocktwits: {e}")
             return pd.DataFrame()
 
-    def get_reddit_posts(self, subreddit="nvidia", limit=20):
+    def get_reddit_posts(self, subreddit="nvidia", limit=200):
         """Reddit JSON"""
         print(f"👽 Crawle r/{subreddit}...")
         url = f"https://www.reddit.com/r/{subreddit}/new.json?limit={limit}"
