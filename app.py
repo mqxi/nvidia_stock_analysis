@@ -9,6 +9,7 @@ from src.indicators import add_indicators
 from src.scraper import NewsScraper
 from src.sentiment import SentimentAnalyzer
 from src.predictor import StockPredictor
+from src.agents import HedgeFund
 
 st.set_page_config(page_title="NVIDIA Stock AI", layout="wide", page_icon="📈")
 
@@ -60,7 +61,7 @@ col3.metric("ATR (Volatilität)", f"${latest['ATR']:.2f}", "Schwankungsbreite")
 col4.metric("MACD Signal", "KAUFEN" if latest['MACD'] > latest['MACD_Signal'] else "VERKAUFEN", delta_color="normal")
 
 # --- Tabs für bessere Übersicht ---
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📊 Chart", "📉 Momentum", "🌊 Volumen", "🧠 KI Prognose", "☁️ NLP", "🔬 Math & Cycles"]) 
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["📊 Chart", "📉 Momentum", "🌊 Volumen", "🧠 KI Prognose", "☁️ NLP", "🔬 Math & Cycles", "🕵️ Agenten Rat"])
 
 # TAB 1: Hauptchart
 with tab1:
@@ -166,6 +167,7 @@ with tab4:
         st.subheader("Letzte Schlagzeilen")
         st.dataframe(news_df[['Date', 'Title', 'Sentiment_Score']], hide_index=True)
 
+# TAB 5: Social Sentiment & Insider Talk
 with tab5:
     st.subheader("📢 Social Sentiment & Insider Talk")
     st.markdown("Was denken die Privatanleger auf **Stocktwits** und **Reddit** im Vergleich zu den Medien?")
@@ -250,6 +252,7 @@ with tab5:
     else:
         st.warning("Keine Daten gefunden. API Limit oder Internet-Problem?")
 
+# TAB 6: Mathematische Zeitreihen-Analyse
 with tab6:
     st.subheader("Mathematische Zeitreihen-Analyse")
     st.markdown("Identifikation von versteckten Mustern und Zyklen, die dem bloßen Auge verborgen bleiben.")
@@ -312,3 +315,44 @@ with tab6:
         # Top Zyklen Text
         top_cycle = fourier_filtered.iloc[0]['Cycle_Length_Days']
         st.info(f"💡 **Insight:** Der stärkste erkannte Zyklus wiederholt sich etwa alle **{top_cycle:.1f} Tage**. Achte auf Muster in diesem Abstand!")
+        
+# TAB 7: AI Agent Council
+with tab7:
+    st.subheader("🕵️ Der KI-Investoren Rat")
+    st.markdown("Wir simulieren ein Team aus drei Experten-Agenten, die unterschiedliche Daten analysieren und zu einem gemeinsamen Entschluss kommen.")
+    
+    # Wir brauchen Daten aus den anderen Modulen, die wir oben schon geladen haben
+    # (df, news_df, prediction, decomposition) sind schon da
+    
+    fund = HedgeFund()
+    
+    # Decomposition muss eventuell neu berechnet werden, falls Tab 6 nicht geklickt wurde
+    if 'decomposition' not in locals() or decomposition is None:
+         from src.indicators import calculate_seasonal_decomposition
+         decomposition = calculate_seasonal_decomposition(df, period=60)
+    
+    # Analyse starten
+    agents, verdict, color = fund.get_verdict(df, news_df, prediction, decomposition)
+    
+    # Großes Ergebnis anzeigen
+    st.markdown("---")
+    st.markdown(f"<h2 style='text-align: center; color: {color};'>Gesamturteil: {verdict}</h2>", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    # Karten für jeden Agenten anzeigen
+    col_a1, col_a2, col_a3 = st.columns(3)
+    
+    for col, agent in zip([col_a1, col_a2, col_a3], agents):
+        with col:
+            # Farbe für den Agenten Header
+            header_color = "green" if agent.vote == "BULLISH" else "red" if agent.vote == "BEARISH" else "gray"
+            st.markdown(f"### :{header_color}[{agent.name}]")
+            st.caption(f"Rolle: {agent.role}")
+            
+            st.metric("Votum", agent.vote, f"Sicherheit: {agent.confidence*100:.0f}%")
+            
+            with st.container(border=True):
+                st.markdown("**Begründung:**")
+                st.write(agent.reason)
+
+    st.info("💡 **Das Prinzip:** Multi-Agenten-Systeme reduzieren Fehler, indem sie nicht nur einer Datenquelle vertrauen (z.B. nur dem Chart), sondern technische, fundamentale und statistische Signale gegeneinander abwägen.")
