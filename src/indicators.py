@@ -1,7 +1,8 @@
-import pandas as pd
 import numpy as np
-from statsmodels.tsa.seasonal import seasonal_decompose
+import pandas as pd
 import scipy.fftpack
+from statsmodels.tsa.seasonal import seasonal_decompose
+
 
 def calculate_rsi(data, window=14):
     """Berechnet den RSI (Relative Strength Index)."""
@@ -14,6 +15,7 @@ def calculate_rsi(data, window=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
+
 def add_indicators(df):
     """Fügt SMA, Bollinger, RSI, MACD, ATR und OBV hinzu."""
     if df is None or df.empty:
@@ -22,45 +24,46 @@ def add_indicators(df):
     df = df.copy()
 
     # --- Bestehende Indikatoren ---
-    df['SMA_20'] = df['Close'].rolling(window=20).mean()
-    df['SMA_50'] = df['Close'].rolling(window=50).mean()
-    df['RSI'] = calculate_rsi(df['Close'])
-    
-    std_dev = df['Close'].rolling(window=20).std()
-    df['Bollinger_Upper'] = df['SMA_20'] + (2 * std_dev)
-    df['Bollinger_Lower'] = df['SMA_20'] - (2 * std_dev)
-    
-    df['Daily_Return'] = df['Close'].pct_change()
+    df["SMA_20"] = df["Close"].rolling(window=20).mean()
+    df["SMA_50"] = df["Close"].rolling(window=50).mean()
+    df["RSI"] = calculate_rsi(df["Close"])
+
+    std_dev = df["Close"].rolling(window=20).std()
+    df["Bollinger_Upper"] = df["SMA_20"] + (2 * std_dev)
+    df["Bollinger_Lower"] = df["SMA_20"] - (2 * std_dev)
+
+    df["Daily_Return"] = df["Close"].pct_change()
 
     # --- NEU: MACD (Trend) ---
     # EMA 12 (schnell) - EMA 26 (langsam)
-    ema12 = df['Close'].ewm(span=12, adjust=False).mean()
-    ema26 = df['Close'].ewm(span=26, adjust=False).mean()
-    df['MACD'] = ema12 - ema26
+    ema12 = df["Close"].ewm(span=12, adjust=False).mean()
+    ema26 = df["Close"].ewm(span=26, adjust=False).mean()
+    df["MACD"] = ema12 - ema26
     # Signal Linie (9-Tage EMA des MACD)
-    df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+    df["MACD_Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
     # Histogramm (Differenz)
-    df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
+    df["MACD_Hist"] = df["MACD"] - df["MACD_Signal"]
 
     # --- NEU: ATR (Volatilität) ---
     # True Range ist das Maximum aus 3 Werten
-    high_low = df['High'] - df['Low']
-    high_close = np.abs(df['High'] - df['Close'].shift())
-    low_close = np.abs(df['Low'] - df['Close'].shift())
-    
+    high_low = df["High"] - df["Low"]
+    high_close = np.abs(df["High"] - df["Close"].shift())
+    low_close = np.abs(df["Low"] - df["Close"].shift())
+
     ranges = pd.concat([high_low, high_close, low_close], axis=1)
     true_range = np.max(ranges, axis=1)
     # ATR ist der gleitende Durchschnitt der True Range
-    df['ATR'] = true_range.rolling(window=14).mean()
+    df["ATR"] = true_range.rolling(window=14).mean()
 
     # --- NEU: OBV (Volumen-Fluss) ---
     # Wenn Close > Vorheriges Close: Addiere Volumen
     # Wenn Close < Vorheriges Close: Subtrahiere Volumen
-    df['OBV'] = (np.sign(df['Close'].diff()) * df['Volume']).fillna(0).cumsum()
+    df["OBV"] = (np.sign(df["Close"].diff()) * df["Volume"]).fillna(0).cumsum()
 
     # Bereinigen
     df.dropna(inplace=True)
     return df
+
 
 def calculate_seasonal_decomposition(df, period=252):
     """
@@ -71,16 +74,13 @@ def calculate_seasonal_decomposition(df, period=252):
         return None
 
     # Wir müssen sicherstellen, dass keine NaNs da sind
-    clean_data = df['Close'].dropna()
-    
+    clean_data = df["Close"].dropna()
+
     # Additive Zerlegung
-    result = seasonal_decompose(clean_data, model='additive', period=period)
-    
-    return {
-        'trend': result.trend,
-        'seasonal': result.seasonal,
-        'resid': result.resid
-    }
+    result = seasonal_decompose(clean_data, model="additive", period=period)
+
+    return {"trend": result.trend, "seasonal": result.seasonal, "resid": result.resid}
+
 
 def calculate_fourier_transform(df):
     """
@@ -88,26 +88,25 @@ def calculate_fourier_transform(df):
     Gibt die Zyklenlänge (in Tagen) und deren Stärke (Amplitude) zurück.
     """
     # Detrending: Wir ziehen den Durchschnitt ab, um nur die Schwingungen zu sehen
-    close_prices = df['Close'].values
+    close_prices = df["Close"].values
     n = len(close_prices)
     detrended = close_prices - np.mean(close_prices)
-    
+
     # FFT Berechnung
     fft_values = scipy.fftpack.fft(detrended)
     frequencies = scipy.fftpack.fftfreq(n)
-    
+
     # Wir brauchen nur die positive Hälfte (Symmetrie)
     mask = frequencies > 0
     fft_values = fft_values[mask]
     frequencies = frequencies[mask]
-    
+
     # Amplitude berechnen
     amplitude = np.abs(fft_values)
-    
+
     # Frequenz in "Tage pro Zyklus" umwandeln (1 / Frequenz)
     cycles_days = 1 / frequencies
-    
-    return pd.DataFrame({
-        'Cycle_Length_Days': cycles_days,
-        'Amplitude': amplitude
-    }).sort_values(by='Amplitude', ascending=False)
+
+    return pd.DataFrame(
+        {"Cycle_Length_Days": cycles_days, "Amplitude": amplitude}
+    ).sort_values(by="Amplitude", ascending=False)
